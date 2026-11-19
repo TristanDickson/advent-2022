@@ -1,0 +1,10 @@
+{
+  "name": "advent-2022",
+  "version": "1.0.0",
+  "private": true,
+  "bin": { "advent-2022": "demo.js" },
+  "scripts": {
+    "rope": "node demo.js rope",
+    "climb": "node demo.js climb"
+  }
+}
