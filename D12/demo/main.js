@@ -2,13 +2,14 @@
 //
 //   node main.js [file]                 print part 1 and part 2
 //   node main.js [file] --animate       watch the part 1 search, then the path
-//     --delay=MS     pause between frames (default 16)
-//     --every=N      search steps per frame (default scales with map size)
+//     --delay=MS     time per frame (default 16)
+//     --every=N      search steps per frame (default 1)
 //
 // The full input is 136 columns wide, so widen the terminal or shrink the font.
 
 const fs = require("fs");
 const path = require("path");
+const timers = require("timers/promises");
 
 const args = process.argv.slice(2);
 const option = (name, fallback) => {
@@ -17,8 +18,6 @@ const option = (name, fallback) => {
 };
 const inputFile = args.find((x) => !x.startsWith("--")) ?? "input.csv";
 const animate = args.includes("--animate");
-
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const getHeight = (letter) => {
   if (letter == "S") return 0;
@@ -117,7 +116,7 @@ const render = (openTiles, closedTiles, pathIcons = new Map()) => {
 
 const animatePart1 = async () => {
   const delay = option("delay", 16);
-  const every = option("every", Math.max(1, Math.round(tiles.flat().length / 400)));
+  const every = option("every", 1);
   const width = tiles[0].length;
   if (process.stdout.columns && process.stdout.columns < width) {
     console.log(`Terminal is ${process.stdout.columns} columns, map is ${width}. Widen it and rerun.`);
@@ -131,6 +130,8 @@ const animatePart1 = async () => {
   });
   process.stdout.write("\x1b[2J\x1b[?25l");
 
+  // A fixed-rate tick, so drawing time doesn't change the speed.
+  const ticks = timers.setInterval(delay)[Symbol.asyncIterator]();
   let steps = 0;
   let open, closed;
   const path = await findPath(start, end, async (openTiles, closedTiles) => {
@@ -138,9 +139,10 @@ const animatePart1 = async () => {
     closed = closedTiles;
     if (++steps % every == 0) {
       render(openTiles, closedTiles);
-      await sleep(delay);
+      await ticks.next();
     }
   });
+  await ticks.return();
 
   render(open, closed, new Map(path.map((tile) => [tile.previous, getIcon(tile, tile.previous)])));
   restoreCursor();
