@@ -1,14 +1,16 @@
 // Day 9 demo: a 10-knot rope following its head, drawn live in the terminal.
 //
-//   node main.js [file]              animate, then print part 1 and part 2
+//   node main.js [file]              animate, with both answers shown from the start
 //   node main.js [file] --quiet      just print part 1 and part 2
-//     --delay=MS     pause between frames (default 30)
-//     --every=N      moves per frame (default scales so a run lasts about a minute)
+//     --delay=MS     time per frame (default 50)
+//     --every=N      moves per frame (default 1)
 //
+// At the defaults the full input takes about 10 minutes; Ctrl-C stops it at any point.
 // test2.csv is the larger worked example from the puzzle and makes a good first run.
 
 const fs = require("fs");
 const path = require("path");
+const timers = require("timers/promises");
 
 const args = process.argv.slice(2);
 const option = (name, fallback) => {
@@ -17,8 +19,6 @@ const option = (name, fallback) => {
 };
 const inputFile = args.find((x) => !x.startsWith("--")) ?? "input.csv";
 const quiet = args.includes("--quiet");
-
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const vectors = {
   R: { x: 1, y: 0 },
@@ -72,7 +72,7 @@ const updateCamera = (h, c, width, height, margin) => {
   if (h.y < c.y - height / 2 + my) c.y--;
 };
 
-const render = (rope, visited, camera, width, height, moves) => {
+const render = (rope, visited, camera, width, height, status) => {
   const knotAt = new Map();
   for (let k = rope.length - 1; k >= 0; k--) knotAt.set(`${rope[k].x},${rope[k].y}`, k);
 
@@ -91,14 +91,14 @@ const render = (rope, visited, camera, width, height, moves) => {
     }
     out += "\x1b[0m\n";
   }
-  out += `move ${moves}   tail has visited ${visited.size} cells\x1b[K`;
+  out += `${status}   tail has visited ${visited.size} cells\x1b[K`;
   process.stdout.write(out);
 };
 
-const animate = async () => {
-  const delay = option("delay", 30);
+const animate = async (answers) => {
+  const delay = option("delay", 50);
+  const every = option("every", 1);
   const totalMoves = instrs.reduce((acc, ins) => acc + ins.dist, 0);
-  const every = option("every", Math.max(1, Math.ceil(totalMoves / 2000)));
   const width = Math.min(process.stdout.columns || 80, 120);
   const height = Math.min((process.stdout.rows || 24) - 2, 40);
   const camera = { x: 0, y: 0 };
@@ -110,25 +110,29 @@ const animate = async () => {
   });
   process.stdout.write("\x1b[2J\x1b[?25l");
 
+  // A fixed-rate tick, so drawing time doesn't change the speed.
+  const ticks = timers.setInterval(delay)[Symbol.asyncIterator]();
+  const status = () => `${answers}   move ${moves} of ${totalMoves}`;
   let moves = 0;
   let last;
   await simulate(10, async (rope, visited) => {
     updateCamera(rope[0], camera, width, height, 8);
     last = [rope, visited];
     if (++moves % every == 0) {
-      render(rope, visited, camera, width, height, moves);
-      await sleep(delay);
+      render(rope, visited, camera, width, height, status());
+      await ticks.next();
     }
   });
-  render(...last, camera, width, height, moves);
+  await ticks.return();
+  render(...last, camera, width, height, status());
   restoreCursor();
   console.log();
 };
 
 const main = async () => {
-  if (!quiet) await animate();
-  console.log(`Part 1: ${await simulate(2)}`);
-  console.log(`Part 2: ${await simulate(10)}`);
+  const answers = `Part 1: ${await simulate(2)}   Part 2: ${await simulate(10)}`;
+  if (quiet) console.log(answers);
+  else await animate(answers);
 };
 
 main();
